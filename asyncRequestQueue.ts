@@ -3,7 +3,7 @@ type functionToRunOnPromise<T, R> = (item: T) => Promise<R>
 type resultArray<R> = returnType<R>[]
 type returnType<R> = { result: R | null, error: Error | null }
 
-class AsyncRequestQueue<T, R> {
+export class AsyncRequestQueue<T, R> {
   private PromiseQueue: T[];
   private concurrency: number;
   private results: resultArray<R>;
@@ -24,8 +24,12 @@ class AsyncRequestQueue<T, R> {
     this.concurrency = concurrency;
     this.results = new Array(items.length);
     this.inProgressQueue = [];
-    this.failedItems = [];
+    this.failedItems = new Array(items.length);
     this.promiseQueueGivenByUser = items
+
+    if (concurrency < 1) {
+      throw "concurrency can't be less than 1 ";
+    }
   }
 
   async process(functionToRunOnPromise: functionToRunOnPromise<T, R>): Promise<resultArray<R>> {
@@ -40,20 +44,26 @@ class AsyncRequestQueue<T, R> {
 
   private async processNextFunc(functoRunOnPromise: functionToRunOnPromise<T, R>, resolveFunc: (value: resultArray<R>) => void) {
 
+    console.log("\n\n\n\n\n\n\n\n");
+
     if (this.PromiseQueue.length === 0 && this.inProgressQueue.length === 0) {
       // if at the end then return
+      console.log("at the end length of the promise queue and returning as we are at the end");
+
       resolveFunc(this.results)
       return;
     }
 
     if (this.inProgressQueue.length >= this.concurrency || this.PromiseQueue.length === 0) {
       // if the concurrency limit is reached then return
+      console.log("waiting as wegoing for another one reached the concurrency limit");
       return
     }
 
     // processing the promise
     let promise = this.PromiseQueue.shift()
     if (promise === undefined || promise === null) {
+      console.log("the promise is undefined ");
       this.processNextFunc(functoRunOnPromise, resolveFunc)
       return
     }
@@ -62,7 +72,9 @@ class AsyncRequestQueue<T, R> {
     this.addPromiseToProcessingArray(promise)
 
     const resPromise = this.processSingleItem(functoRunOnPromise, indexOFPromise, promise).finally(() => {
-    // remove the item form the processing queue
+      // remove the item form the processing queue
+      console.log(`the promise no ${indexOFPromise} finished and going for another one `);
+
 
       this.removePromiseFromProcessingArray(promise)
 
@@ -78,20 +90,28 @@ class AsyncRequestQueue<T, R> {
   }
 
   private async processSingleItem(functoRunOnPromise: functionToRunOnPromise<T, R>, indexNumber: number, promiseToProcess: T): Promise<R | Error> {
+    console.log(`processing the promise at ${indexNumber}`);
+
     try {
       let res = await functoRunOnPromise(promiseToProcess)
-      this.results[indexNumber].result = res
-      this.results[indexNumber].error = null
+
+      this.results[indexNumber] = { result: res, error: null }
       return res
     } catch (error) {
+      console.log(`the error at the promise index ${indexNumber} --->>>`, error);
       let res = error instanceof Error ? error : new Error("error occurred in executing the func ->" + error)
-      this.results[indexNumber].error = res
-      this.results[indexNumber].result = null
+      this.results[indexNumber] = { result: null, error: res }
+      // adding it to the failed items array so that I can later retry     
+
+
+      this.failedItems[indexNumber] = { item: promiseToProcess, error: res, indexNo: indexNumber }
       return res
     }
   }
 
   private async addPromiseToProcessingArray(promiseToProcess: T) {
+    console.log("adding the promise to the progress array");
+
     this.inProgressQueue.push(promiseToProcess)
   }
 
@@ -102,12 +122,15 @@ class AsyncRequestQueue<T, R> {
       console.error("the indes in array is -1 for the promise ->", promiseToRemove)
       return
     }
+    console.log("removing the promise form the processing array");
+
 
     this.inProgressQueue.splice(indexInArray, 1)
 
   }
 
 }
+
 
 
 async function main() {
