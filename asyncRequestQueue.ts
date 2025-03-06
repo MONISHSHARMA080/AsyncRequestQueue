@@ -132,7 +132,6 @@ export class AsyncRequestQueue<T, R> {
 }
 
 
-
 async function main() {
   const queue = new AsyncRequestQueue<string>(1);
 
