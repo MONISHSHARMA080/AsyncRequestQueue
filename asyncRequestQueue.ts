@@ -1,15 +1,15 @@
 
-type functionToRunOnPromise<T, R> = (item: T) => Promise<R>
+type functionToRunOnPromise<T, R> = (item: Promise<T>) => R
 type resultArray<R> = returnType<R>[]
 type returnType<R> = { result: R | null, error: Error | null }
 
 export class AsyncRequestQueue<T, R> {
-  private PromiseQueue: T[];
+  private PromiseQueue: Promise<T>[];
   private concurrency: number;
   private results: resultArray<R>;
-  private inProgressQueue: T[];
-  private failedItems: { item: T, error: Error, indexNo: number }[];
-  private promiseQueueGivenByUser: T[]
+  private inProgressQueue: Promise<T>[];
+  private failedItems: { item: Promise<T>, error: Error, indexNo: number }[];
+  private promiseQueueGivenByUser: Promise<T>[]
 
   /**
    * Create a new PromiseBatchProcessor
@@ -17,7 +17,7 @@ export class AsyncRequestQueue<T, R> {
    * @param concurrency Maximum number of concurrent promises (default: 5)
    */
   constructor(
-    items: T[],
+    items: Promise<T>[],
     concurrency: number = 5
   ) {
     this.PromiseQueue = [...items];
@@ -71,16 +71,22 @@ export class AsyncRequestQueue<T, R> {
     // add the promise to the processing queue
     this.addPromiseToProcessingArray(promise)
 
-    const resPromise = this.processSingleItem(functoRunOnPromise, indexOFPromise, promise).finally(() => {
-      // remove the item form the processing queue
-      console.log(`the promise no ${indexOFPromise} finished and going for another one `);
+    const resPromise = this.processSingleItem(functoRunOnPromise, indexOFPromise, promise)
+      .catch((errorFromPromise) => {
+        console.log(`the promise throws and caught it in the .catch block -> ${errorFromPromise}`);
+
+        this.results[indexOFPromise] = { result: null, error: errorFromPromise instanceof Error ? errorFromPromise : new Error(String(errorFromPromise)) };
+      })
+      .finally(() => {
+        // remove the item form the processing queue
+        console.log(`the promise no ${indexOFPromise} finished and going for another one `);
 
 
-      this.removePromiseFromProcessingArray(promise)
+        this.removePromiseFromProcessingArray(promise)
 
-      // kickStart next func  if it is paused 
-      this.processNextFunc(functoRunOnPromise, resolveFunc)
-    })
+        // kickStart next func  if it is paused 
+        this.processNextFunc(functoRunOnPromise, resolveFunc)
+      })
 
 
 
@@ -89,7 +95,7 @@ export class AsyncRequestQueue<T, R> {
 
   }
 
-  private async processSingleItem(functoRunOnPromise: functionToRunOnPromise<T, R>, indexNumber: number, promiseToProcess: T): Promise<R | Error> {
+  private async processSingleItem(functoRunOnPromise: functionToRunOnPromise<T, R>, indexNumber: number, promiseToProcess: Promise<T>): Promise<R | Error> {
     console.log(`processing the promise at ${indexNumber}`);
 
     try {
@@ -98,7 +104,7 @@ export class AsyncRequestQueue<T, R> {
       this.results[indexNumber] = { result: res, error: null }
       return res
     } catch (error) {
-      console.log(`the error at the promise index ${indexNumber} --->>>`, error);
+      console.log(`the error at the promise index ${indexNumber} and caught it in the processSingleItem() --->>>`, error);
       let res = error instanceof Error ? error : new Error("error occurred in executing the func ->" + error)
       this.results[indexNumber] = { result: null, error: res }
       // adding it to the failed items array so that I can later retry     
@@ -109,13 +115,13 @@ export class AsyncRequestQueue<T, R> {
     }
   }
 
-  private async addPromiseToProcessingArray(promiseToProcess: T) {
+  private async addPromiseToProcessingArray(promiseToProcess: Promise<T>) {
     console.log("adding the promise to the progress array");
 
     this.inProgressQueue.push(promiseToProcess)
   }
 
-  private removePromiseFromProcessingArray(promiseToRemove: T) {
+  private removePromiseFromProcessingArray(promiseToRemove: Promise<T>) {
     // to do 
     let indexInArray = this.inProgressQueue.indexOf(promiseToRemove)
     if (indexInArray === -1) {
@@ -131,55 +137,3 @@ export class AsyncRequestQueue<T, R> {
 
 }
 
-
-async function main() {
-  const queue = new AsyncRequestQueue<string>(1);
-
-  const delay = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
-
-  const promiseFunctions = [
-    async () => {
-      await delay(700);
-      console.log("\n\n  primise 1 completed \n\n");
-      return "A";
-    }, // Takes 1 second
-    async () => {
-      await delay(600);
-      console.log("\n\n  primise 2 completed \n\n");
-      return "B";
-    }, // Takes 1 second
-    async () => {
-      await delay(400);
-      console.log("\n\n  primise 3 completed \n\n");
-      return "C";
-    }, // Takes 1 second
-    async () => {
-      await delay(320);
-      console.log("\n\n  primise 4 completed \n\n");
-      return "D";
-    }, // Takes 1 second
-    async () => {
-      await delay(500);
-      console.log("\n\n  primise 5 completed \n\n");
-      return "E";
-    }, // Takes 1 second
-    async () => {
-      await delay(100);
-      console.log("\n\n  primise 6 completed \n\n");
-      return "F";
-    }, // Takes 1 second
-    async () => {
-      await delay(100);
-      console.log("\n\n  primise 7 completed \n\n");
-      return "G";
-    }, // Takes 1 second
-  ];
-
-  queue.addToQueue(promiseFunctions);
-  console.log("about to start processing promises");
-  const result = await queue.processQueue();
-  console.log("the result array is ->", result);
-}
-
-main();
