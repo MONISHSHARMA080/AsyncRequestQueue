@@ -31,8 +31,11 @@ export class AsyncRequestQueue22<T, R> {
 
   public process(promiseArray: promiseArray<T>, funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>): Promise<resultArray<T, R>> {
     return new Promise((resolve, reject) => {
-      this.promiseQueue = [...this.promiseQueue, ...promiseArray]
-      this.promiseQueueSubmittedByUser = [...promiseArray]
+      this.promiseQueue = [...promiseArray]; // Create a copy
+      this.promiseQueueSubmittedByUser = promiseArray
+      this.resultArray = new Array(promiseArray.length)
+      console.log(`length of the array provided theby the user ->${promiseArray.length} and the processQueue -> ${ this.promiseQueue.length }`);
+      
 
       this.processAll(resolve, funcToProcessIndividualPromise);
     })
@@ -41,7 +44,9 @@ export class AsyncRequestQueue22<T, R> {
   private async processAll(resolveFunc: (value: resultArray<T, R>) => void, funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>) {
 
     // if we have reached the end then
-    if (this.processingQueue.length === 0 && this.processingQueue.length === 0) {
+    if (this.promiseQueue.length === 0 && this.processingQueue.length === 0) {
+      console.log(`length of the processqueue ->${this.promiseQueue.length}`);
+      
       resolveFunc(this.resultArray)
     }
 
@@ -54,6 +59,8 @@ export class AsyncRequestQueue22<T, R> {
     if (promiseFromTheQueue === undefined || promiseFromTheQueue === null) {
       return
     }
+    //pushing it in to the processing queue
+    this.processingQueue.push(promiseFromTheQueue)
 
     const indexOfThePromise = this.promiseQueueSubmittedByUser.indexOf(promiseFromTheQueue)
 
@@ -70,21 +77,22 @@ export class AsyncRequestQueue22<T, R> {
   /** process indvidual promises and then remove it form the  */
   private async processIndividualPromiseAndRemoveItFormTheProcessingQueue(promiseToProcess: Promise<T>, funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>, 
     indexOfPromise: number) {
+      
+      
     try {
         let resultFormFunc = await funcToProcessIndividualPromise(promiseToProcess)
-        this.resultArray[indexOfPromise].ifErrorThenOriginalPromise = promiseToProcess
-        this.resultArray[indexOfPromise].error =  null
-        this.resultArray[indexOfPromise].result = resultFormFunc
+        console.log("<<result for the func is ->", resultFormFunc);
+        
+        this.resultArray[indexOfPromise] ={result:resultFormFunc, error: null, ifErrorThenOriginalPromise:null}
         this.removeFromTheProcessingQueue(promiseToProcess, indexOfPromise)
     } catch (error) {
-        console.log(` error is ->`, error);
+        console.log(` error in individual item at index ${indexOfPromise} is  ->`, error);
         let errorInExecution = error instanceof Error? error : new Error("there is a error executing the function->",error)
-        this.resultArray[indexOfPromise].ifErrorThenOriginalPromise = promiseToProcess
-        this.resultArray[indexOfPromise].error =  errorInExecution
-        this.resultArray[indexOfPromise].result = null
+        this.resultArray[indexOfPromise] ={result:null, error: errorInExecution, ifErrorThenOriginalPromise:promiseToProcess}
         this.removeFromTheProcessingQueue(promiseToProcess, indexOfPromise)
     }
 
+      console.log(` what do we have at this destination -> ${ this.resultArray[indexOfPromise].result } `);
   }
 
   private removeFromTheProcessingQueue(promiseToProcess: Promise<T>, indexOfPromise: number ){
@@ -94,10 +102,8 @@ export class AsyncRequestQueue22<T, R> {
       return
     }
     this.processingQueue.splice(index)
-
   }
 }
-
 
 
 
