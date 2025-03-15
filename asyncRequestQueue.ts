@@ -1,24 +1,28 @@
 type processResult<T, R> = {
   result: R | null;
   error: Error | null;
-  ifErrorThenOriginalPromise: Promise<T> | null
+  ifErrorThenOriginalPromise: Promise<T> | null;
 };
 
 type promiseArray<T> = Promise<T>[];
-type resultArray<T, R> = processResult<T, R>[]
-type funcToProcessIndividualPromise<T, R> = (value: Promise<T>) => Promise<R>
+type processingQueue<T> = {
+  promiseRunning: Promise<T>;
+  indexOfThePromise: number;
+}[];
+type resultArray<T, R> = processResult<T, R>[];
+type funcToProcessIndividualPromise<T, R> = (value: Promise<T>) => Promise<R>;
 
-
-/** there are 2 generics cause, take for eg fetch if I have it then I have a promise that returns response but let's say I want 
- * it to return a thing in form of json  form the body, then I can do it 
+/** there are 2 generics cause, take for eg fetch if I have it then I have a promise that returns response but let's say I want
+ * it to return a thing in form of json  form the body, then I can do it
  *
+ * @param {R} R - it is the the return value/type when the function to run on individual promise is provided with the promise<T>
  * */
 export class AsyncRequestQueue22<T, R> {
   private concurrencyLimit: number;
   private resultArray: resultArray<T, R>;
-  private processingQueue: promiseArray<T>;
+  private processingQueue: processingQueue<T>;
   private promiseQueue: promiseArray<T>;
-  private promiseQueueSubmittedByUser: promiseArray<T>
+  private promiseQueueSubmittedByUser: promiseArray<T>;
 
   constructor(concurrencyLimit: number = 5) {
     if (concurrencyLimit <= 0) {
@@ -29,81 +33,117 @@ export class AsyncRequestQueue22<T, R> {
     this.processingQueue = [];
   }
 
-  public process(promiseArray: promiseArray<T>, funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>): Promise<resultArray<T, R>> {
+  public process(
+    promiseArray: promiseArray<T>,
+    funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>,
+  ): Promise<resultArray<T, R>> {
     return new Promise((resolve, reject) => {
       this.promiseQueue = [...promiseArray]; // Create a copy
-      this.promiseQueueSubmittedByUser = promiseArray
-      this.resultArray = new Array(promiseArray.length)
-      console.log(`length of the array provided theby the user ->${promiseArray.length} and the processQueue -> ${ this.promiseQueue.length }`);
-      
-
+      this.promiseQueueSubmittedByUser = promiseArray;
+      this.resultArray = new Array(promiseArray.length);
       this.processAll(resolve, funcToProcessIndividualPromise);
-    })
+    });
   }
 
-  private async processAll(resolveFunc: (value: resultArray<T, R>) => void, funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>) {
-
+  private async processAll(
+    resolveFunc: (value: resultArray<T, R>) => void,
+    funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>,
+  ) {
     // if we have reached the end then
     if (this.promiseQueue.length === 0 && this.processingQueue.length === 0) {
-      console.log(`length of the processqueue ->${this.promiseQueue.length}`);
-      
-      resolveFunc(this.resultArray)
+      console.log(
+        `length of the processqueue ->${this.promiseQueue.length} as we have reached the end`,
+      );
+      resolveFunc(this.resultArray);
     }
 
     // if we have reached the processing/concurrecy limit  then return or if we are at the last promise
-    if (this.processingQueue.length >= this.concurrencyLimit || this.promiseQueue.length === 0) {
+    if (
+      this.processingQueue.length >= this.concurrencyLimit ||
+      this.promiseQueue.length === 0
+    ) {
+      console.log(`-- reached the concurrencyLimit -- `);
+      console.log(
+        `number of running promises are -> ${this.processingQueue.length} and the concurrency limit is ${this.concurrencyLimit} `,
+      );
+
       return;
     }
 
-    const promiseFromTheQueue = this.promiseQueue.shift()
+    const promiseFromTheQueue = this.promiseQueue.shift();
     if (promiseFromTheQueue === undefined || promiseFromTheQueue === null) {
-      return
+      return;
     }
     //pushing it in to the processing queue
-    this.processingQueue.push(promiseFromTheQueue)
 
-    const indexOfThePromise = this.promiseQueueSubmittedByUser.indexOf(promiseFromTheQueue)
+    const indexOfThePromise = this.promiseQueueSubmittedByUser.indexOf(promiseFromTheQueue);
 
+    this.processingQueue.push({promiseRunning:promiseFromTheQueue, indexOfThePromise:indexOfThePromise});
 
-    this.processIndividualPromiseAndRemoveItFormTheProcessingQueue( promiseFromTheQueue,  funcToProcessIndividualPromise, indexOfThePromise).finally(()=>{
-      console.log(`promise number ${indexOfThePromise} was completed  and now recursing `);
-      this.processAll(resolveFunc, funcToProcessIndividualPromise)
-    })
-    this.processAll(resolveFunc, funcToProcessIndividualPromise)
-
-
+    this.processIndividualPromiseAndRemoveItFormTheProcessingQueue(
+      promiseFromTheQueue,
+      funcToProcessIndividualPromise,
+      indexOfThePromise,
+    ).finally(() => {
+      console.log( `promise number ${indexOfThePromise} was completed  and now recursing `);
+      this.processAll(resolveFunc, funcToProcessIndividualPromise);
+    });
+    this.processAll(resolveFunc, funcToProcessIndividualPromise);
   }
 
   /** process indvidual promises and then remove it form the  */
-  private async processIndividualPromiseAndRemoveItFormTheProcessingQueue(promiseToProcess: Promise<T>, funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>, 
-    indexOfPromise: number) {
-      
-      
+  private async processIndividualPromiseAndRemoveItFormTheProcessingQueue(
+    promiseToProcess: Promise<T>,
+    funcToProcessIndividualPromise: funcToProcessIndividualPromise<T, R>,
+    indexOfPromise: number,
+  ) {
+    console.log(
+      `processsig the promiose no. ${indexOfPromise}  and number of running promises are -> ${this.processingQueue.length} `,
+    );
+
     try {
-        let resultFormFunc = await funcToProcessIndividualPromise(promiseToProcess)
-        console.log("<<result for the func is ->", resultFormFunc);
-        
-        this.resultArray[indexOfPromise] ={result:resultFormFunc, error: null, ifErrorThenOriginalPromise:null}
-        this.removeFromTheProcessingQueue(promiseToProcess, indexOfPromise)
+      let resultFormFunc =
+        await funcToProcessIndividualPromise(promiseToProcess);
+      console.log(" \n result for the func is ->", resultFormFunc);
+
+      this.resultArray[indexOfPromise] = {
+        result: resultFormFunc,
+        error: null,
+        ifErrorThenOriginalPromise: null,
+      };
+      this.removeFromTheProcessingQueue(promiseToProcess, indexOfPromise);
     } catch (error) {
-        console.log(` error in individual item at index ${indexOfPromise} is  ->`, error);
-        let errorInExecution = error instanceof Error? error : new Error("there is a error executing the function->",error)
-        this.resultArray[indexOfPromise] ={result:null, error: errorInExecution, ifErrorThenOriginalPromise:promiseToProcess}
-        this.removeFromTheProcessingQueue(promiseToProcess, indexOfPromise)
+      console.log(
+        ` error in individual item at index ${indexOfPromise} is  ->`,
+        error,
+      );
+      let errorInExecution =
+        error instanceof Error
+          ? error
+          : new Error("there is a error executing the function->", error);
+      this.resultArray[indexOfPromise] = {
+        result: null,
+        error: errorInExecution,
+        ifErrorThenOriginalPromise: promiseToProcess,
+      };
+      this.removeFromTheProcessingQueue(promiseToProcess, indexOfPromise);
     }
 
-      console.log(` what do we have at this destination -> ${ this.resultArray[indexOfPromise].result } `);
+    console.log(
+      ` what do we have at this destination -> ${this.resultArray[indexOfPromise].result} `,
+    );
   }
 
-  private removeFromTheProcessingQueue(promiseToProcess: Promise<T>, indexOfPromise: number ){
-    let index =     this.processingQueue.indexOf(promiseToProcess)
+  private removeFromTheProcessingQueue(promiseToProcess: Promise<T>,indexOfPromise: number) {
+    let index = this.processingQueue.findIndex(  item => item.indexOfThePromise === indexOfPromise);
+
     if (index < 0) {
-      console.error("the index of promise in the processing queue is <0 (the promise was not there), the index of promise in the promsie queue was --> ", indexOfPromise)
-      return
+      console.error("\nthe index of promise in the processing queue is <0 (the promise was not there), the index of promise in the promsie queue was --> ", indexOfPromise,"\n");
+      return;
     }
-    this.processingQueue.splice(index)
+    this.processingQueue.splice(index,1);
+  
   }
 }
-
 
 
